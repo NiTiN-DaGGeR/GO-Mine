@@ -1,0 +1,246 @@
+#include "WiFi.h"
+#include "ESPAsyncWebServer.h"
+#include <Wire.h>
+#include  <WiFi.h>
+#include "MAX30105.h"
+#include <ESPmDNS.h>
+#include <FirebaseESP32.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_Sensor.h>
+#include <HTTPClient.h>
+#include "time.h"
+
+
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+
+
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#define GREEN 16
+#define RED 17
+
+// Define LED and pushbutton state booleans
+bool buttonDown = false;
+bool ledOn = false;
+
+// Define LED and pushbutton pins
+#define STATUS_LED 15
+#define STATUS_BUTTON 5
+
+int ir=13; 
+int led=14; 
+
+BlynkTimer timer;
+MAX30105 particleSensor;
+
+#define FIREBASE_Authorization_key "euDB3Coml1tifCgWCMXayU5zt2DhZSIHqMxNoeVI"
+#define FIREBASE_HOST "database-ands-default-rtdb.firebaseio.com"
+
+const char* ssid = "DaGGeR";
+const char* password = "12345678";
+
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 19800;
+const int   daylightOffset_sec = 0;
+String GOOGLE_SCRIPT_ID = "AKfycbwoI5iRr6dwlNj5A1MKPNMlKDgiU7X0Eximyhkp2UVKzdvPEqIpYe7BwMARST2yiNvZ";    // change Gscript ID
+
+int count = 0;
+
+char auth[] = "wdzSxn6RwBg1NoPIlTVtua4nNqJC5_v6";
+
+FirebaseData firebaseData;
+FirebaseJson json;
+
+String bpm = "";
+String bo = "";
+
+unsigned long lastTime = 0;  
+unsigned long timerDelay = 10;
+
+String readBPM() {
+
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
+  {
+    Serial.println("MAX30105 was not found. Please check wiring/power. ");
+//    while (1);
+    return "00";
+  }
+  else
+{
+
+byte ledBrightness = 0x1F; //Options: 0=Off to 255=50mA
+byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
+byte ledMode = 3; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+int sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+int pulseWidth = 411; //Options: 69, 118, 215, 411
+int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+boolean state = false;
+  
+{
+   float hr;
+  
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+
+  hr=(particleSensor.getIR()/1000+48);
+  
+ Serial.print("Heart Rate: ");
+ Serial.println(hr); //Send raw data to plotter
+ Firebase.setFloat(firebaseData, "/DEEPANSHU/HEART RATE", hr);
+//  delay(200);
+
+    if(hr>80)
+  {
+    Blynk.notify("Alert!! Abnormal Heartbeat!!");
+  }
+    
+   return String(hr);
+  }
+}  
+}
+
+String readBO() {
+
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
+  {
+    Serial.println("MAX30105 was not found. Please check wiring/power. ");
+//    while (1);
+    return "00";
+  }
+  else
+{
+
+byte ledBrightness = 0x1F; //Options: 0=Off to 255=50mA
+byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
+byte ledMode = 3; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+int sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+int pulseWidth = 411; //Options: 69, 118, 215, 411
+int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+boolean state = false;
+  
+{
+   float spo2;
+  
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+
+  spo2=(particleSensor.getIR()/1000+71);
+  
+ Serial.print("BLOOD OXYGEN: ");
+ Serial.println(spo2); //Send raw data to plotter
+ Firebase.setFloat(firebaseData, "/DEEPANSHU/BLOOD OXYGEN", spo2);
+//  delay(200);
+
+    if(spo2<0)
+  {
+    Blynk.notify("Alert!! Abnormal Oxygen Level!!");
+  }
+    
+   return String(spo2);
+  }
+}  
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  Serial.println();
+   Firebase.begin(FIREBASE_HOST,FIREBASE_Authorization_key);
+
+     // Connect to Wi-Fi
+  WiFi.begin (ssid, password);
+  Blynk.begin(auth, ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+
+  Serial.println(WiFi.localIP());
+  if(!MDNS.begin("esp32")) {
+     Serial.println("Error starting mDNS");
+     return;
+  }
+
+  Serial.println(WiFi.localIP());
+  
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  delay(1000);
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+
+
+void loop() {
+//  delay(1000);
+
+   Blynk.run();
+
+    if ((millis() - lastTime) > timerDelay) {
+   
+    bpm = readBPM(); 
+    bo = readBO();
+
+  lastTime = millis();
+    }
+
+  display.clearDisplay();
+
+//Display Heart Rate
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("HEART RATE: ");
+  display.setTextSize(2);
+  display.setCursor(0,10);
+  display.print(bpm);
+
+  display.setTextSize(2);
+  display.print(" bpm");
+  
+  //Display SPO2
+  display.setTextSize(1);
+  display.setCursor(0, 35);
+  display.print("SPO2: ");
+  display.setTextSize(2);
+  display.setCursor(0, 45);
+  display.print(bo);
+  display.print(" %"); 
+  display.display(); 
+
+  struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("Failed to obtain time");
+      return;
+    }
+    char timeStringBuff[50]; //50 chars should be enough
+    strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
+    String asString(timeStringBuff);
+    asString.replace(" ", "-");
+    Serial.print("Time:");
+    Serial.println(asString);
+    String urlFinal = "https://script.google.com/macros/s/"+GOOGLE_SCRIPT_ID+"/exec?"+"date=" + asString + "&hr=" + bpm + "&uprof=DEEPANSHU" + "&spo2=" + bo;
+    Serial.print("POST data to spreadsheet:");
+    Serial.println(urlFinal);
+    HTTPClient http;
+    http.begin(urlFinal.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    int httpCode = http.GET(); 
+    Serial.print("HTTP Status Code: ");
+    Serial.println(httpCode);
+    //---------------------------------------------------------------------
+    //getting response from google sheet
+    String payload;
+    if (httpCode > 0) {
+        payload = http.getString();
+        Serial.println("Payload: "+payload);    
+    }
+    //---------------------------------------------------------------------
+    http.end();
+  }
+//  count++;
