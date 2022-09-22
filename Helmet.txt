@@ -1,0 +1,259 @@
+#include "WiFi.h"
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <FirebaseESP32.h>
+#include  <WiFi.h>
+#include "DHT.h"
+#include "MAX30105.h"
+#include "time.h"
+
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+WiFiClient client;
+
+BlynkTimer timer;
+MAX30105 particleSensor;
+
+//#define FIREBASE_HOST "go-mine-85a32-default-rtdb.firebaseio.com"
+//#define FIREBASE_Authorization_key "0ZHoDg8x3hLdjG2pyvb3ntaUStuLV1OPA7bWazOA"
+
+#define FIREBASE_Authorization_key "euDB3Coml1tifCgWCMXayU5zt2DhZSIHqMxNoeVI"
+#define FIREBASE_HOST "database-ands-default-rtdb.firebaseio.com"
+
+
+const char* ssid = "DaGGeR";
+const char* password = "12345678";
+char auth[] = "wdzSxn6RwBg1NoPIlTVtua4nNqJC5_v6";
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 19800;
+const int   daylightOffset_sec = 0;
+String apiKey = "MLK2PS3KDWYDX9S5";
+const char* server = "api.thingspeak.com";
+String GOOGLE_SCRIPT_ID = "AKfycbyw1AtqHKfH8Z3saBlxjZdW_QH4BSsuo_SuutgPTSMYsxS04oVf3wOVQ2Ibr0IRhHIBrA";    // change Gscript ID
+
+int count = 0;
+
+#define DHTTYPE DHT11
+#define DHTPIN 27
+#define ONE_WIRE_BUS 4
+#define SOUND_SPEED 0.034
+#define MQ2 35
+#define GREEN 16
+#define RED 17
+int sensorValue = 0;
+int ir=13; 
+int led=14; 
+
+
+FirebaseData firebaseData;
+FirebaseJson json;
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+String temperatureF = "";
+String temperatureC = "";
+String rtemperature = "";
+String rhumidity = "";
+String distance = "";
+String gas = "";
+String bpm = "";
+String irs = "";
+String bo = "";
+
+unsigned long lastTime = 0;  
+unsigned long timerDelay = 10;
+DHT dht(DHTPIN, DHTTYPE);
+const int trigPin = 5;
+const int echoPin = 18;
+long duration;
+
+//AsyncWebServer server(80);
+
+String sendUptime(){
+
+  float sensorValue;
+  
+  sensorValue = analogRead(MQ2);
+  Blynk.virtualWrite(V1, sensorValue);
+  Serial.print("Gas Level: ");
+  Serial.println(sensorValue);
+  Firebase.setFloat(firebaseData, "/DEEPANSHU/GAS LEVEL", sensorValue);
+//  delay(200);
+
+  if (sensorValue > 1000)
+  {
+    Blynk.notify("Gas Detected!");
+    digitalWrite(GREEN, LOW);
+    digitalWrite(RED, HIGH);
+//    digitalWrite(led, HIGH);
+  }
+
+  else
+  {
+    digitalWrite(GREEN, HIGH);
+    digitalWrite(RED, LOW);
+//    digitalWrite(led, LOW);
+  }
+
+  return String(sensorValue);
+}
+
+
+
+String readIRS() {
+  
+ {
+      int irvalue = HIGH;
+      irvalue = digitalRead(ir);
+      //int irvalue = digitalRead(ir);
+      
+      if(irvalue == LOW)
+    {
+      const char* i ="WORN";
+      Serial.print("Helmet Status: ");  
+      Serial.println(i); 
+      Firebase.setString(firebaseData, "/DEEPANSHU/HELMET STATUS", i);
+      digitalWrite(led, LOW);
+      
+      return String(i);
+    }
+      else
+    {
+      const char* i ="NOT WORN";
+      Serial.print("Helmet Status: "); 
+      Serial.println(i); 
+      Firebase.setString(firebaseData, "/DEEPANSHU/HELMET STATUS", i); 
+      digitalWrite(led, HIGH);
+      Blynk.notify("Alert!! Helmet Opened");
+          
+      return String(i);
+    }
+  }
+  
+}
+
+String processor(const String& var){
+  Serial.println(var);
+  
+  if(var == "GAS"){
+   return gas;
+  } 
+  else if(var == "IRS"){
+   return irs;
+  } 
+  return String();
+}
+
+void setup(){
+  // Serial port for debugging purposes
+  Serial.begin(115200);
+
+//  sensors.begin();
+
+   Serial.println();
+   Firebase.begin(FIREBASE_HOST,FIREBASE_Authorization_key);
+
+     // Connect to Wi-Fi
+  WiFi.begin (ssid, password);
+  Blynk.begin(auth, ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+
+  // Print ESP32 Local IP Address
+  Serial.println(WiFi.localIP());
+  if(!MDNS.begin("esp32")) {
+     Serial.println("Error starting mDNS");
+     return;
+  }
+
+    Serial.println(WiFi.localIP());
+
+
+  pinMode(MQ2, INPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(RED, OUTPUT);
+  pinMode(ir, INPUT);
+  pinMode(led, OUTPUT);
+
+
+ 
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+ 
+void loop(){
+
+  Blynk.run();
+  timer.run();
+  
+  if ((millis() - lastTime) > timerDelay) {
+    
+    gas = sendUptime();
+    irs = readIRS();
+    lastTime = millis();
+  }  
+
+   if (client.connect(server, 80)) {
+    String postStr = apiKey;
+    postStr += "&field1=";
+    postStr += String(gas);
+
+    client.print("POST /update HTTP/1.1\n");
+    client.print("Host: api.thingspeak.com\n");
+    client.print("Connection: close\n");
+    client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
+    client.print("Content-Type: application/x-www-form-urlencoded\n");
+    client.print("Content-Length: ");
+    client.print(postStr.length());
+    client.print("\n\n");
+    client.print(postStr);
+   } 
+
+  if (WiFi.status() == WL_CONNECTED) {
+    static bool flag = false;
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("Failed to obtain time");
+      return;
+    }
+    char timeStringBuff[50]; //50 chars should be enough
+    strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
+    String asString(timeStringBuff);
+    asString.replace(" ", "-");
+    Serial.print("Time:");
+    Serial.println(asString);
+    String urlFinal = "https://script.google.com/macros/s/"+GOOGLE_SCRIPT_ID+"/exec?"+"date=" + asString + "&uprof=DEEPANSHU" + "&hstatus=" + irs + "&glevel=" + gas;
+    Serial.print("POST data to spreadsheet:");
+    Serial.println(urlFinal);
+    HTTPClient http;
+    http.begin(urlFinal.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    int httpCode = http.GET(); 
+    Serial.print("HTTP Status Code: ");
+    Serial.println(httpCode);
+    //---------------------------------------------------------------------
+    //getting response from google sheet
+//    String payload;
+//    if (httpCode > 0) {
+//        payload = http.getString();
+//        Serial.println("Payload: "+payload);    
+//    }
+    //---------------------------------------------------------------------
+    http.end();
+  }
+  count++;
+//  delay(10);
+
+client.stop();
+
+}
