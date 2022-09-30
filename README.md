@@ -1,5 +1,7 @@
 # the_RANDoms
 
+REPLIT LINK : https://replit.com/@NiTiN-DaGGeR/GO-Mine
+
 A Relentless and Realtime Worker Health Analysis System using IoT and Android
 
 A Realtime Safety device and Android Application for the workers of Mining Industry to monitor the hazardous conditions and health analysis to both managers and family members.
