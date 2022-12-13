@@ -1,6 +1,6 @@
 # the_RANDoms
 
-REPLIT LINK : https://replit.com/@NiTiN-DaGGeR/GO-Mine
+DRIVE LINK : https://drive.google.com/drive/folders/1pLgekkV7xu2ih-Rrzwr8MwaNiElPRn_L?usp=share_link
 
 A Relentless and Realtime Worker Health Analysis System using IoT and Android
 
